@@ -17,6 +17,7 @@ concurrency:
 jobs:
   test:
     name: Test the dispatch commit
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -44,6 +45,7 @@ jobs:
 
   publish:
     name: Publish the tested commit
+    if: github.ref == 'refs/heads/master'
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
