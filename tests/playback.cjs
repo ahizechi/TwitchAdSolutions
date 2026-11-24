@@ -82,6 +82,33 @@ const cases = [
             const simple = await page.run(`fetch(${json(unrelated)})`);
             assert.equal(await simple.text(), 'untouched', 'unrelated requests bypass the GraphQL hook');
             fixture(page, gqlUrl, 'ok');
+            const playback = {operationName: 'PlaybackAccessToken', variables: {playerType: 'frontpage'}};
+            await page.run(`const observedWorker = new Worker('blob:https://www.twitch.tv/fixture');`);
+            await page.run(`fetch(${json(gqlUrl)}, {method: 'POST',
+                headers: {'X-Device-Id': 'fixture-device', 'Client-Integrity': 'fixture-integrity',
+                    'Authorization': 'fixture-authorization', 'Client-Version': 'fixture-version',
+                    'Client-Session-Id': 'fixture-session'},
+                body: ${json(json(playback))}
+            })`);
+            const nativeCall = page.evaluate('requests.at(-1)');
+            assert.equal(JSON.parse(nativeCall.body).variables.playerType, 'popout');
+            assert.equal(nativeCall.headers.authorization, 'fixture-authorization');
+            const events = new Map(page.evaluate('observedWorker.messages').map(({key, value}) => [key, value]));
+            assert.equal(events.get(path.startsWith('vaft/') ? 'UpdateDeviceId' : 'UboUpdateDeviceId'), 'fixture-device');
+            assert.equal(events.get('UpdateClientIntegrityHeader'), 'fixture-integrity');
+            assert.equal(events.get('UpdateAuthorizationHeader'), 'fixture-authorization');
+            if (path.startsWith('vaft/')) {
+                assert.equal(events.get('UpdateClientVersion'), 'fixture-version');
+                assert.equal(events.get('UpdateClientSession'), 'fixture-session');
+            }
+            const offOriginBody = json(playback);
+            await page.run(`fetch(${json(unrelated)}, {method: 'POST', headers: {}, body: ${json(offOriginBody)}})`);
+            assert.equal(page.evaluate('requests.at(-1).body'), offOriginBody);
+            const miniPlayer = json({operationName: 'PlaybackAccessToken', variables: {playerType: 'picture-by-picture'}});
+            await page.run(`fetch(${json(gqlUrl)}, {method: 'POST', headers: {}, body: ${json(miniPlayer)}})`);
+            assert.equal(page.evaluate('requests.at(-1).body'), '');
+            await page.run(`fetch(new Request(${json(gqlUrl)}, {method: 'POST', body: ${json(miniPlayer)}}))`);
+            assert.equal(page.evaluate('requests.at(-1).body'), '');
             const original = [
                 { operationName: 'UnrelatedOperation', variables: { playerType: 'keep' } },
                 { operationName: 'PlaybackAccessToken', variables: { playerType: 'frontpage' } },

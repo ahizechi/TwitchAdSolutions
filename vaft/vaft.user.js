@@ -942,57 +942,68 @@
     function hookFetch() {
         const realFetch = window.fetch;
         window.realFetch = realFetch;
-        window.fetch = function(url, init, ...args) {
-            if (typeof url === 'string') {
-                if (url.includes('gql')) {
-                    let deviceId = init.headers['X-Device-Id'];
-                    if (typeof deviceId !== 'string') {
-                        deviceId = init.headers['Device-ID'];
-                    }
-                    if (typeof deviceId === 'string' && GQLDeviceID != deviceId) {
-                        GQLDeviceID = deviceId;
-                        postTwitchWorkerMessage('UpdateDeviceId', GQLDeviceID);
-                    }
-                    if (typeof init.headers['Client-Version'] === 'string' && init.headers['Client-Version'] !== ClientVersion) {
-                        postTwitchWorkerMessage('UpdateClientVersion', ClientVersion = init.headers['Client-Version']);
-                    }
-                    if (typeof init.headers['Client-Session-Id'] === 'string' && init.headers['Client-Session-Id'] !== ClientSession) {
-                        postTwitchWorkerMessage('UpdateClientSession', ClientSession = init.headers['Client-Session-Id']);
-                    }
-                    if (typeof init.headers['Client-Integrity'] === 'string' && init.headers['Client-Integrity'] !== ClientIntegrityHeader) {
-                        postTwitchWorkerMessage('UpdateClientIntegrityHeader', ClientIntegrityHeader = init.headers['Client-Integrity']);
-                    }
-                    if (typeof init.headers['Authorization'] === 'string' && init.headers['Authorization'] !== AuthorizationHeader) {
-                        postTwitchWorkerMessage('UpdateAuthorizationHeader', AuthorizationHeader = init.headers['Authorization']);
-                    }
-                    // Get rid of mini player above chat - TODO: Reject this locally instead of having server reject it
-                    if (init && typeof init.body === 'string' && init.body.includes('PlaybackAccessToken') && init.body.includes('picture-by-picture')) {
-                        init.body = '';
-                    }
-                    if (ForceAccessTokenPlayerType && typeof init.body === 'string' && init.body.includes('PlaybackAccessToken')) {
-                        let replacedPlayerType = '';
-                        const newBody = JSON.parse(init.body);
-                        if (Array.isArray(newBody)) {
-                            for (let i = 0; i < newBody.length; i++) {
-                                if (newBody[i]?.variables?.playerType && newBody[i]?.variables?.playerType !== ForceAccessTokenPlayerType) {
-                                    replacedPlayerType = newBody[i].variables.playerType;
-                                    newBody[i].variables.playerType = ForceAccessTokenPlayerType;
-                                }
-                            }
-                        } else {
-                            if (newBody?.variables?.playerType && newBody?.variables?.playerType !== ForceAccessTokenPlayerType) {
-                                replacedPlayerType = newBody.variables.playerType;
-                                newBody.variables.playerType = ForceAccessTokenPlayerType;
-                            }
-                        }
-                        if (replacedPlayerType) {
-                            console.log(`Replaced '${replacedPlayerType}' player type with '${ForceAccessTokenPlayerType}' player type`);
-                            init.body = JSON.stringify(newBody);
-                        }
-                    }
+        window.fetch = async function(input, init, ...args) {
+            const request = input instanceof Request ? input : null;
+            let headers;
+            try {
+                const url = new URL(request ? request.url : input, window.location.href);
+                if (url.origin !== 'https://gql.twitch.tv' || url.pathname !== '/gql') {
+                    return realFetch.apply(this, arguments);
+                }
+                headers = new Headers(init?.headers ?? request?.headers);
+            } catch {
+                return realFetch.apply(this, arguments);
+            }
+            const deviceId = headers.get('x-device-id') ?? headers.get('device-id');
+            if (deviceId !== null && deviceId !== GQLDeviceID) {
+                postTwitchWorkerMessage('UpdateDeviceId', GQLDeviceID = deviceId);
+            }
+            const version = headers.get('client-version');
+            if (version !== null && version !== ClientVersion) {
+                postTwitchWorkerMessage('UpdateClientVersion', ClientVersion = version);
+            }
+            const session = headers.get('client-session-id');
+            if (session !== null && session !== ClientSession) {
+                postTwitchWorkerMessage('UpdateClientSession', ClientSession = session);
+            }
+            const integrity = headers.get('client-integrity');
+            if (integrity !== null && integrity !== ClientIntegrityHeader) {
+                postTwitchWorkerMessage('UpdateClientIntegrityHeader', ClientIntegrityHeader = integrity);
+            }
+            const authorization = headers.get('authorization');
+            if (authorization !== null && authorization !== AuthorizationHeader) {
+                postTwitchWorkerMessage('UpdateAuthorizationHeader', AuthorizationHeader = authorization);
+            }
+            let parsed;
+            try {
+                const body = typeof init?.body === 'string' ? init.body
+                    : init?.body == null && request?.body ? await request.clone().text() : null;
+                if (!body) {
+                    return realFetch.apply(this, arguments);
+                }
+                parsed = JSON.parse(body);
+            } catch {
+                return realFetch.apply(this, arguments);
+            }
+            const operations = Array.isArray(parsed) ? parsed : [parsed];
+            const isMiniPlayer = operation => operation?.operationName === 'PlaybackAccessToken'
+                && operation.variables?.playerType === 'picture-by-picture';
+            if (operations.length && operations.every(isMiniPlayer)) {
+                return realFetch.call(this, input, {...init, body: ''}, ...args);
+            }
+            let changed = false;
+            for (const operation of operations) {
+                if (operation?.operationName !== 'PlaybackAccessToken' || isMiniPlayer(operation)) {
+                    continue;
+                }
+                const playerType = operation.variables?.playerType;
+                if (ForceAccessTokenPlayerType && typeof playerType === 'string' && playerType && playerType !== ForceAccessTokenPlayerType) {
+                    operation.variables.playerType = ForceAccessTokenPlayerType;
+                    changed = true;
                 }
             }
-            return realFetch.apply(this, arguments);
+            return changed ? realFetch.call(this, input, {...init, body: JSON.stringify(parsed)}, ...args)
+                : realFetch.apply(this, arguments);
         };
     }
     function onContentLoaded() {

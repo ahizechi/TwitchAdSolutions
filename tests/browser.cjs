@@ -50,9 +50,8 @@ function advance(milliseconds) {
 
 class FakeHeaders {
     constructor(initial = {}) {
-        const entries = initial instanceof FakeHeaders || Array.isArray(initial)
-            ? initial.entries()
-            : Object.entries(initial);
+        const entries = initial instanceof FakeHeaders ? initial.entries()
+            : Array.isArray(initial) ? initial : Object.entries(initial);
         this.values = new Map();
         for (const [name, value] of entries) {
             this.values.set(String(name).toLowerCase(), String(value));

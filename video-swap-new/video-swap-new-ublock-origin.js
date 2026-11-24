@@ -667,51 +667,60 @@ twitch-videoad.js text/javascript
     function hookFetch() {
         const realFetch = window.fetch;
         window.realFetch = realFetch;
-        window.fetch = function(url, init, ...args) {
-            if (typeof url === 'string') {
-                if (url.includes('gql')) {
-                    let deviceId = init.headers['X-Device-Id'];
-                    if (typeof deviceId !== 'string') {
-                        deviceId = init.headers['Device-ID'];
-                    }
-                    if (typeof deviceId === 'string' && gql_device_id != deviceId) {
-                        gql_device_id = deviceId;
-                        postTwitchWorkerMessage('UboUpdateDeviceId', gql_device_id);
-                    }
-                    if (typeof init.headers['Client-Integrity'] === 'string' && init.headers['Client-Integrity'] !== ClientIntegrityHeader) {
-                        postTwitchWorkerMessage('UpdateClientIntegrityHeader', ClientIntegrityHeader = init.headers['Client-Integrity']);
-                    }
-                    if (typeof init.headers['Authorization'] === 'string' && init.headers['Authorization'] !== AuthorizationHeader) {
-                        postTwitchWorkerMessage('UpdateAuthorizationHeader', AuthorizationHeader = init.headers['Authorization']);
-                    }
-                    // Get rid of mini player above chat - TODO: Reject this locally instead of having server reject it
-                    if (init && typeof init.body === 'string' && init.body.includes('PlaybackAccessToken') && init.body.includes('picture-by-picture')) {
-                        init.body = '';
-                    }
-                    if (OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE && typeof init.body === 'string' && init.body.includes('PlaybackAccessToken')) {
-                        let replacedPlayerType = '';
-                        const newBody = JSON.parse(init.body);
-                        if (Array.isArray(newBody)) {
-                            for (let i = 0; i < newBody.length; i++) {
-                                if (newBody[i]?.variables?.playerType && newBody[i]?.variables?.playerType !== OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE) {
-                                    replacedPlayerType = newBody[i].variables.playerType;
-                                    newBody[i].variables.playerType = OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE;
-                                }
-                            }
-                        } else {
-                            if (newBody?.variables?.playerType && newBody?.variables?.playerType !== OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE) {
-                                replacedPlayerType = newBody.variables.playerType;
-                                newBody.variables.playerType = OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE;
-                            }
-                        }
-                        if (replacedPlayerType) {
-                            console.log(`Replaced '${replacedPlayerType}' player type with '${OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE}' player type`);
-                            init.body = JSON.stringify(newBody);
-                        }
-                    }
+        window.fetch = async function(input, init, ...args) {
+            const request = input instanceof Request ? input : null;
+            let headers;
+            try {
+                const url = new URL(request ? request.url : input, window.location.href);
+                if (url.origin !== 'https://gql.twitch.tv' || url.pathname !== '/gql') {
+                    return realFetch.apply(this, arguments);
+                }
+                headers = new Headers(init?.headers ?? request?.headers);
+            } catch {
+                return realFetch.apply(this, arguments);
+            }
+            const deviceId = headers.get('x-device-id') ?? headers.get('device-id');
+            if (deviceId !== null && deviceId !== gql_device_id) {
+                postTwitchWorkerMessage('UboUpdateDeviceId', gql_device_id = deviceId);
+            }
+            const integrity = headers.get('client-integrity');
+            if (integrity !== null && integrity !== ClientIntegrityHeader) {
+                postTwitchWorkerMessage('UpdateClientIntegrityHeader', ClientIntegrityHeader = integrity);
+            }
+            const authorization = headers.get('authorization');
+            if (authorization !== null && authorization !== AuthorizationHeader) {
+                postTwitchWorkerMessage('UpdateAuthorizationHeader', AuthorizationHeader = authorization);
+            }
+            let parsed;
+            try {
+                const body = typeof init?.body === 'string' ? init.body
+                    : init?.body == null && request?.body ? await request.clone().text() : null;
+                if (!body) {
+                    return realFetch.apply(this, arguments);
+                }
+                parsed = JSON.parse(body);
+            } catch {
+                return realFetch.apply(this, arguments);
+            }
+            const operations = Array.isArray(parsed) ? parsed : [parsed];
+            const isMiniPlayer = operation => operation?.operationName === 'PlaybackAccessToken'
+                && operation.variables?.playerType === 'picture-by-picture';
+            if (operations.length && operations.every(isMiniPlayer)) {
+                return realFetch.call(this, input, {...init, body: ''}, ...args);
+            }
+            let changed = false;
+            for (const operation of operations) {
+                if (operation?.operationName !== 'PlaybackAccessToken' || isMiniPlayer(operation)) {
+                    continue;
+                }
+                const playerType = operation.variables?.playerType;
+                if (OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE && typeof playerType === 'string' && playerType && playerType !== OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE) {
+                    operation.variables.playerType = OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE;
+                    changed = true;
                 }
             }
-            return realFetch.apply(this, arguments);
+            return changed ? realFetch.call(this, input, {...init, body: JSON.stringify(parsed)}, ...args)
+                : realFetch.apply(this, arguments);
         };
     }
     function updateAdblockBanner(data) {

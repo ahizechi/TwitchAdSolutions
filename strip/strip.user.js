@@ -343,7 +343,7 @@
         window.realFetch = realFetch;
         window.fetch = function(url, init, ...args) {
             if (typeof url === 'string') {
-                if (url.includes('gql')) {
+                if (url.includes('gql') && typeof init?.body === 'string') {
                     if (ForceAccessTokenPlayerType && typeof init.body === 'string' && init.body.includes('PlaybackAccessToken') && !init.body.includes('picture-by-picture') && !init.body.includes('frontpage')) {
                         let replacedPlayerType = '';
                         const newBody = JSON.parse(init.body);
