@@ -846,6 +846,41 @@ twitch-videoad.js text/javascript
             state: playerState
         };
     }
+    let restorePlayerPreferences = null;
+    function preparePlayerPreferences(player) {
+        restorePlayerPreferences?.();
+        const state = player?.core?.state;
+        const values = [
+            ['video-muted', typeof state?.muted === 'boolean' ? JSON.stringify({default: state.muted}) : null],
+            ['volume', Number.isFinite(state?.volume) ? String(state.volume) : null],
+            ['video-quality', state?.quality?.group ? JSON.stringify({default: state.quality.group}) : null],
+        ];
+        const temporaryWrites = [];
+        for (const [key, temporary] of values) {
+            if (temporary === null) continue;
+            try {
+                const original = localStorage.getItem(key);
+                if (original === temporary) continue;
+                localStorage.setItem(key, temporary);
+                temporaryWrites.push({key, original, temporary});
+            } catch {}
+        }
+        if (!temporaryWrites.length) return;
+        const timer = setTimeout(restore, 3000);
+        restorePlayerPreferences = restore;
+
+        function restore() {
+            clearTimeout(timer);
+            for (const {key, original, temporary} of temporaryWrites) {
+                try {
+                    if (localStorage.getItem(key) !== temporary) continue;
+                    if (original === null) localStorage.removeItem(key);
+                    else localStorage.setItem(key, original);
+                } catch {}
+            }
+            restorePlayerPreferences = null;
+        }
+    }
     function reloadTwitchPlayer(isPausePlay) {
         const playerAndState = getPlayerAndState();
         if (!playerAndState) {
@@ -870,41 +905,9 @@ twitch-videoad.js text/javascript
             player.play();
             return;
         }
-        const lsKeyQuality = 'video-quality';
-        const lsKeyMuted = 'video-muted';
-        const lsKeyVolume = 'volume';
-        let currentQualityLS = null;
-        let currentMutedLS = null;
-        let currentVolumeLS = null;
-        try {
-            currentQualityLS = localStorage.getItem(lsKeyQuality);
-            currentMutedLS = localStorage.getItem(lsKeyMuted);
-            currentVolumeLS = localStorage.getItem(lsKeyVolume);
-            if (localStorageHookFailed && player?.core?.state) {
-                localStorage.setItem(lsKeyMuted, JSON.stringify({default:player.core.state.muted}));
-                localStorage.setItem(lsKeyVolume, player.core.state.volume);
-            }
-            if (localStorageHookFailed && player?.core?.state?.quality?.group) {
-                localStorage.setItem(lsKeyQuality, JSON.stringify({default:player.core.state.quality.group}));
-            }
-        } catch {}
+        if (localStorageHookFailed) preparePlayerPreferences(player);
         playerState.setSrc({ isNewMediaPlayerInstance: true, refreshAccessToken: true });
         player.play();
-        if (localStorageHookFailed && (currentQualityLS || currentMutedLS || currentVolumeLS)) {
-            setTimeout(() => {
-                try {
-                    if (currentQualityLS) {
-                        localStorage.setItem(lsKeyQuality, currentQualityLS);
-                    }
-                    if (currentMutedLS) {
-                        localStorage.setItem(lsKeyMuted, currentMutedLS);
-                    }
-                    if (currentVolumeLS) {
-                        localStorage.setItem(lsKeyVolume, currentVolumeLS);
-                    }
-                } catch {}
-            }, 3000);
-        }
     }
     function onContentLoaded() {
         // This stops Twitch from pausing the player when in another tab and an ad shows.

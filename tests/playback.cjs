@@ -200,6 +200,7 @@ const cases = [
     },
     {
         name: 'keeps newer preferences and restores absent slots',
+        legacy: true,
         async run(source, path) {
             const page = loadScript(source, path);
             const result = page.evaluate(`(() => {
@@ -216,6 +217,22 @@ const cases = [
             assert.equal(result.volume, '0.9', 'fresh volume choice survives delayed restore');
             assert.equal(result.quality, null, 'previously absent quality remains absent');
             assert.equal(result.muted, null, 'previously absent mute remains absent');
+
+            const overlap = loadScript(source, path).evaluate(`(() => {
+                installPlayer();
+                if (typeof ReloadPlayerDelay !== 'undefined') ReloadPlayerDelay = 0;
+                localStorage.setItem('volume', '0.1');
+                dispatch('DOMContentLoaded');
+                reloadTwitchPlayer(false);
+                advance(1000);
+                localStorage.setItem('volume', '0.9');
+                reloadTwitchPlayer(false);
+                advance(2000);
+                const during = localStorage.getItem('volume');
+                advance(1000);
+                return { during, after: localStorage.getItem('volume') };
+            })()`);
+            assert.deepEqual(overlap, { during: '0.4', after: '0.9' }, 'the newer reload owns its own restore');
         },
     },
     {
