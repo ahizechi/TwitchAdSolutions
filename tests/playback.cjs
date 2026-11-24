@@ -255,7 +255,17 @@ const cases = [
     },
     {
         name: 'releases retired workers and generated Blob URLs',
+        legacy: true,
         async run(source, path) {
+            if (path.startsWith('strip/')) {
+                const { page, worker } = await playback(source, path);
+                assert.equal(page.run('objectUrls.size'), 0);
+                worker.run(`AdSegmentCache.set('https://cdn.invalid/expired.ts', Date.now() - 120001);`);
+                const media = await outcome(worker.run(`fetch(${json(mediaUrl)})`));
+                assert.equal(media.state, 'fulfilled');
+                assert.equal(worker.run('AdSegmentCache.size'), 0);
+                return;
+            }
             const page = loadScript(source, path);
             const result = page.evaluate(`(() => {
                 const older = new Worker('blob:https://www.twitch.tv/old');
@@ -266,6 +276,45 @@ const cases = [
                     retained: objectUrls.size, retired: older.terminated, revoked: revoked.length };
             })()`);
             assert.deepEqual(result, { stale: 0, active: 1, retained: 0, retired: true, revoked: 2 });
+
+            const worker = (await playback(source, path)).worker;
+            for (let i = 0; i < 18; i++) {
+                const nextMaster = masterUrl.replace('/test.m3u8', `/channel${i}.m3u8`);
+                const nextMedia = `${host}/channel${i}.m3u8`;
+                fixture(worker, nextMaster, masterPlaylist(nextMedia));
+                fixture(worker, nextMedia, plainMedia);
+                const result = await outcome(worker.run(`fetch(${json(nextMaster)})`));
+                assert.equal(result.state, 'fulfilled');
+            }
+            assert.equal(worker.run('Object.keys(StreamInfos).length'), 16);
+            assert.equal(worker.run(`StreamInfosByUrl[${json(mediaUrl)}]`), undefined);
+            assert.equal(worker.run(`StreamInfosByUrl[${json(`${host}/channel17.m3u8`)}].ChannelName`), 'channel17');
+
+            const lastMaster = masterUrl.replace('/test.m3u8', '/channel17.m3u8');
+            const retiredMedia = `${host}/channel17.m3u8`;
+            const newMedia = `${host}/channel17-restarted.m3u8`;
+            fixture(worker, retiredMedia, '', {status: 404});
+            fixture(worker, newMedia, plainMedia);
+            fixture(worker, lastMaster, masterPlaylist(newMedia));
+            const restarted = await outcome(worker.run(`fetch(${json(lastMaster)})`));
+            assert.equal(restarted.state, 'fulfilled');
+            assert.equal(worker.run(`StreamInfosByUrl[${json(retiredMedia)}]`), undefined);
+            assert.equal(worker.run(`StreamInfosByUrl[${json(newMedia)}].ChannelName`), 'channel17');
+
+            const stalled = (await playback(source, path)).worker;
+            fixture(stalled, mediaUrl, adMedia);
+            stalled.run(`
+                if (typeof BackupPlayerTypes !== 'undefined') {
+                    BackupPlayerTypes = ['fixture'];
+                    PlayerReloadMinimalRequestsTime = 0;
+                } else OPT_BACKUP_PLAYER_TYPES = ['fixture'];
+            `);
+            const request = stalled.run(`fetch(${json(mediaUrl)})`);
+            assert.equal((await outcome(request)).state, 'pending', 'fixture is waiting for the worker relay');
+            stalled.run('advance(10000)');
+            assert.equal((await outcome(request)).state, 'fulfilled', 'timed-out relay leaves playback with a playlist');
+            assert.equal(stalled.run('pendingFetchRequests.size'), 0);
+
         },
     },
 ];

@@ -35,7 +35,6 @@
     }
     let localStorageHookFailed = false;
     let adBlockDiv = null;
-    const twitchWorkers = [];
     const workerStringConflicts = [
         'twitch',
         'isVariantA'// TwitchNoSub
@@ -123,8 +122,12 @@
                     hookWorkerFetch();
                     eval(workerString);
                 `;
-                super(URL.createObjectURL(new Blob([newBlobStr])), options);
-                twitchWorkers.push(this);
+                const workerUrl = URL.createObjectURL(new Blob([newBlobStr]));
+                try {
+                    super(workerUrl, options);
+                } finally {
+                    URL.revokeObjectURL(workerUrl);
+                }
                 this.addEventListener('message', (e) => {
                     if (e.data.key == 'ReloadPlayer') {
                         reloadTwitchPlayer();
@@ -338,7 +341,7 @@
             }
             NumStrippedSegments = 0;
         }
-        AdSegmentCache.forEach((key, value, map) => {
+        AdSegmentCache.forEach((value, key, map) => {
             if (value < Date.now() - 120000) {
                 map.delete(key);
             }

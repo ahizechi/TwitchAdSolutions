@@ -17,8 +17,9 @@ twitch-videoad.js text/javascript
         scope.LIVE_SIGNIFIER = ',live';
         scope.CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
         // These are only really for Worker scope...
-        scope.StreamInfos = [];
-        scope.StreamInfosByUrl = [];
+        scope.StreamInfos = Object.create(null);
+        scope.StreamInfosByUrl = Object.create(null);
+        scope.StreamInfoOrder = new Set();
         // Need this in both scopes. Window scope needs to update this to worker scope.
         scope.gql_device_id = null;
         scope.ClientIntegrityHeader = null;
@@ -31,7 +32,7 @@ twitch-videoad.js text/javascript
     }
     let twitchPlayerAndState = null;
     let localStorageHookFailed = false;
-    const twitchWorkers = [];
+    const twitchWorkers = new Set();
     const workerStringConflicts = [
         'twitch',
         'isVariantA'// TwitchNoSub
@@ -105,6 +106,9 @@ twitch-videoad.js text/javascript
                     const pendingFetchRequests = new Map();
                     ${stripAdSegments.toString()}
                     ${processM3U8.toString()}
+                    ${forgetStreamInfo.toString()}
+                    ${retainStreamInfo.toString()}
+                    ${clearBackupVariants.toString()}
                     ${hookWorkerFetch.toString()}
                     ${playlistResponse.toString()}
                     ${isVariantAvailable.toString()}
@@ -136,18 +140,24 @@ twitch-videoad.js text/javascript
                         } else if (e.data.key == 'FetchResponse') {
                             const responseData = e.data.value;
                             if (pendingFetchRequests.has(responseData.id)) {
-                                const { resolve, reject } = pendingFetchRequests.get(responseData.id);
+                                const { resolve, reject, timeout } = pendingFetchRequests.get(responseData.id);
                                 pendingFetchRequests.delete(responseData.id);
+                                clearTimeout(timeout);
                                 if (responseData.error) {
                                     reject(new Error(responseData.error));
                                 } else {
                                     // Create a Response object from the response data
-                                    const response = new Response(responseData.body, {
-                                        status: responseData.status,
-                                        statusText: responseData.statusText,
-                                        headers: responseData.headers
-                                    });
-                                    resolve(response);
+                                    try {
+                                        const emptyBody = responseData.status === 204 || responseData.status === 205 || responseData.status === 304;
+                                        const response = new Response(emptyBody ? null : responseData.body, {
+                                            status: responseData.status,
+                                            statusText: responseData.statusText,
+                                            headers: responseData.headers
+                                        });
+                                        resolve(response);
+                                    } catch (error) {
+                                        reject(error);
+                                    }
                                 }
                             }
                         } else if (e.data.key == 'SimulateAds') {
@@ -161,8 +171,13 @@ twitch-videoad.js text/javascript
                     hookWorkerFetch();
                     eval(workerString);
                 `
-                super(URL.createObjectURL(new Blob([newBlobStr])), options);
-                twitchWorkers.push(this);
+                const workerUrl = URL.createObjectURL(new Blob([newBlobStr]));
+                try {
+                    super(workerUrl, options);
+                } finally {
+                    URL.revokeObjectURL(workerUrl);
+                }
+                twitchWorkers.add(this);
                 this.addEventListener('message', (e) => {
                     if (e.data.key == 'UboUpdateAdBanner') {
                         updateAdblockBanner(e.data);
@@ -183,7 +198,12 @@ twitch-videoad.js text/javascript
                     }
                 });
             }
-        }
+
+            terminate() {
+                twitchWorkers.delete(this);
+                return super.terminate();
+            }
+        };
         let workerInstance = reinsertWorkers(newWorker, reinsert);
         Object.defineProperty(window, 'Worker', {
             get: function() {
@@ -215,8 +235,14 @@ twitch-videoad.js text/javascript
             const attributes = parseAttributes(lines[i].slice(lines[i].indexOf(':') + 1));
             variants.push([url, attributes]);
         }
+        if (isBackup && StreamInfos[streamInfo.ChannelName] !== streamInfo) return;
+        if (isBackup) clearBackupVariants(streamInfo);
         for (const [url, attributes] of variants) {
-            if (!isBackup) streamInfo.FirstVariantUrl ??= url;
+            if (isBackup) streamInfo.BackupVariantUrls.add(url);
+            else {
+                streamInfo.FirstVariantUrl ??= url;
+                streamInfo.VariantUrls.add(url);
+            }
             StreamInfosByUrl[url] = streamInfo;
             if (attributes.RESOLUTION) {
                 streamInfo.Urls.set(url, {Resolution: attributes.RESOLUTION, FrameRate: attributes['FRAME-RATE'], Url: url});
@@ -380,6 +406,7 @@ twitch-videoad.js text/javascript
         const haveAdTags = textStr.includes(AD_SIGNIFIER) || (SimulatedAdsDepth > 0 && (!streamInfo.BackupEncodings || !streamInfo.BackupEncodings.includes(url) || SimulatedAdsDepth - 1 > streamInfo.BackupEncodingsPlayerTypeIndex));
         if (!haveAdTags && !streamInfo.BackupEncodings) {
             streamInfo.BackupEncodingsStatus.clear();
+            streamInfo.RequestedAds.clear();
         }
         if (streamInfo.BackupEncodings && streamInfo.FirstVariantUrl) {
             const streamM3u8Url = streamInfo.FirstVariantUrl;
@@ -392,6 +419,8 @@ twitch-videoad.js text/javascript
                         streamInfo.IsMovingOffBackupEncodings = true;
                         streamInfo.BackupEncodings = null;
                         streamInfo.BackupEncodingsStatus.clear();
+                        clearBackupVariants(streamInfo);
+                        streamInfo.RequestedAds.clear();
                         streamInfo.BackupEncodingsPlayerTypeIndex = -1;
                         postMessage({key:'UboReloadPlayer'});
                     } else if (!streamM3u8.includes('"MIDROLL"') && !streamM3u8.includes('"midroll"')) {
@@ -403,6 +432,9 @@ twitch-videoad.js text/javascript
                                     // Only request one .ts file per .m3u8 request to avoid making too many requests
                                     //console.log('Fetch ad .ts file');
                                     streamInfo.RequestedAds.add(lines[i + 1]);
+                                    if (streamInfo.RequestedAds.size > 256) {
+                                        streamInfo.RequestedAds.delete(streamInfo.RequestedAds.values().next().value);
+                                    }
                                     fetch(lines[i + 1]).then(response => response.blob()).catch(() => {});
                                     break;
                                 }
@@ -423,6 +455,36 @@ twitch-videoad.js text/javascript
         updateAdblockBannerForStream(streamInfo);
         return textStr;
     }
+    function forgetStreamInfo(previous) {
+        for (const url of [...previous.VariantUrls, ...previous.BackupVariantUrls]) {
+            if (StreamInfosByUrl[url] === previous) delete StreamInfosByUrl[url];
+        }
+        delete StreamInfos[previous.ChannelName];
+        StreamInfoOrder.delete(previous.ChannelName);
+    }
+
+    function retainStreamInfo(streamInfo) {
+        const name = streamInfo.ChannelName;
+        const previous = StreamInfos[name];
+        if (previous && previous !== streamInfo) forgetStreamInfo(previous);
+        StreamInfos[name] = streamInfo;
+        StreamInfoOrder.delete(name);
+        StreamInfoOrder.add(name);
+        if (StreamInfoOrder.size > 16) {
+            forgetStreamInfo(StreamInfos[StreamInfoOrder.values().next().value]);
+        }
+    }
+
+    function clearBackupVariants(streamInfo) {
+        for (const url of streamInfo.BackupVariantUrls) {
+            if (!streamInfo.VariantUrls.has(url)) {
+                if (StreamInfosByUrl[url] === streamInfo) delete StreamInfosByUrl[url];
+                streamInfo.Urls.delete(url);
+            }
+        }
+        streamInfo.BackupVariantUrls.clear();
+    }
+
     function resolvePlaylistUri(uri, baseUrl) {
         try {
             const url = new URL(uri.trim(), baseUrl);
@@ -539,8 +601,11 @@ twitch-videoad.js text/javascript
                                 ChannelName: channelName,
                                 UsherParams: (new URL(url)).search,
                                 Urls: new Map(),
+                                VariantUrls: new Set(),
+                                BackupVariantUrls: new Set(),
                             };
                             setStreamInfoUrls(streamInfo, original, baseUrl);
+                            retainStreamInfo(streamInfo);
                             const resolutionInfo = streamInfo.Urls.values().next().value;
                             if (resolutionInfo) {
                                 const mediaResponse = await realFetch(resolutionInfo.Url);
@@ -551,7 +616,8 @@ twitch-videoad.js text/javascript
                                     }
                                 }
                             }
-                            StreamInfos[channelName] = streamInfo;
+                        } else {
+                            retainStreamInfo(streamInfo);
                         }
                         streamInfo.IsMovingOffBackupEncodings = false;
                         const updated = replaceServerTimeInM3u8(streamInfo.BackupEncodings || streamInfo.Encodings, getServerTimeFromM3u8(original));
@@ -666,9 +732,14 @@ twitch-videoad.js text/javascript
                     headers
                 }
             };
+            const timeout = setTimeout(() => {
+                pendingFetchRequests.delete(requestId);
+                reject(new Error('Twitch playback request timed out'));
+            }, 10000);
             pendingFetchRequests.set(requestId, {
                 resolve,
-                reject
+                reject,
+                timeout,
             });
             postMessage({
                 key: 'FetchRequest',
