@@ -1,43 +1,87 @@
-name: Create Release
+name: Publish fork release
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - "vaft/**"
-      - "video-swap-new/**"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: New tag beginning with fork-v
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: publish-fork-release
+  cancel-in-progress: false
 
 jobs:
-  create-release:
+  test:
+    name: Test the dispatch commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tested_sha: ${{ steps.verify.outputs.tested_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Run offline checks
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          tested_sha="$(git rev-parse --verify HEAD)"
+          [[ "$tested_sha" == "$GITHUB_SHA" ]]
+          node tests/check.cjs
+          printf 'tested_sha=%s\n' "$tested_sha" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish the tested commit
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
-    name: Create Release
-    runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Create and verify the new tag, then publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          TESTED_SHA: ${{ needs.test.outputs.tested_sha }}
+        run: |
+          set -euo pipefail
 
-    - name: Set up Git user
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ ! "$RELEASE_TAG" =~ ^fork-v[0-9A-Za-z][0-9A-Za-z._-]*$ ]] ||
+             ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
+            echo "Use a new fork-v tag, such as fork-v1.0.0." >&2
+            exit 1
+          fi
+          if [[ ! "$TESTED_SHA" =~ ^[0-9a-f]{40}$ || "$TESTED_SHA" != "$GITHUB_SHA" ]]; then
+            echo "The tested commit does not match the dispatch commit." >&2
+            exit 1
+          fi
 
-    - name: Set release notes
-      id: set-notes
-      run: |
-        changes=$(git log -1 --pretty=format:%s)
-        echo "release_notes=$changes" >> $GITHUB_ENV
+          # Create the ref atomically. An existing tag fails here.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            --raw-field "ref=refs/tags/$RELEASE_TAG" \
+            --raw-field "sha=$TESTED_SHA" --silent
 
-    - name: Create Release
-      id: create-release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: "v${{ github.run_number }}"
-        release_name: "Release v${{ github.run_number }}"
-        body: ${{ env.release_notes }}
-        draft: false
-        prerelease: false
+          tagged_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          if [[ "$tagged_sha" != "$TESTED_SHA" ]]; then
+            echo "The new tag does not resolve to the tested commit." >&2
+            exit 1
+          fi
+
+          if ! gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$RELEASE_TAG" --notes "Source commit $TESTED_SHA passed the offline checks."; then
+            echo "Publication failed after tag creation. Inspect the release and tag before trying again." >&2
+            exit 1
+          fi

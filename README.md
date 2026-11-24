@@ -67,3 +67,7 @@ Userscript managers:
 ## Issues with the scripts
 
 If the script doesn't work or you're experiencing freezing / buffering issues see [issues.md](issues.md)
+
+## Development
+
+With Node.js 24 or newer, run `node tests/check.cjs` to check syntax, userscript/uBlock parity, install URLs, and playback behavior with offline fixtures.
