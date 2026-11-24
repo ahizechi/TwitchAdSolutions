@@ -22,7 +22,7 @@
   - Automatically mutes/unmutes appropriate Twitch tabs when the tab starts playing ads.
   - Covers the ad player with a black box when ads are playing.
   - Muting the browser Tab avoids negatively impacting metrics for the Streamer and prevents twitch-drops from being disabled.
-  
+
 ---
 
 *Compile from source*
