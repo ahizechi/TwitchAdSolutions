@@ -321,6 +321,27 @@ const cases = [
 
         },
     },
+    {
+        name: 'takes over from an upstream copy that loaded first',
+        async run(source, path) {
+            // Upstream pixeltris builds use version 24 at most and leave a Worker class naming twitch.
+            const page = loadScript('', 'empty.js');
+            page.run(`
+                window.twitchAdSolutionsVersion = 24;
+                window.Worker = class extends Worker { upstream() { return 'twitch upstream hook'; } };
+            `);
+            page.run(source, path);
+            const worker = page.run(`new Worker('blob:https://www.twitch.tv/player-fixture')`);
+            assert.ok(worker.source, 'the fork wraps the player worker');
+            assert.equal(typeof worker.upstream, 'undefined', 'the upstream Worker class is removed');
+
+            const newer = loadScript('', 'empty.js');
+            newer.run('window.twitchAdSolutionsVersion = 1000;');
+            newer.run(source, path);
+            assert.equal(newer.run(`new Worker('blob:https://www.twitch.tv/player-fixture').source`), undefined,
+                'a newer copy that loaded first keeps control');
+        },
+    },
 ];
 
 module.exports = { cases };
