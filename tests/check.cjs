@@ -35,7 +35,20 @@ function bodyOf(source, ublock) {
 function checkInstallUrls(scripts, ref) {
     const raw = 'https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/';
     const knownUrls = scripts.map(({ path }) => raw + path);
-    const documentation = ['README.md', 'full-list.md'].map(path => load(path, ref));
+    const documentation = ['README.md', 'full-list.md', 'issues.md'].map(path => {
+        const doc = load(path, ref);
+        for (const [, target] of doc.matchAll(/\]\(([^)\s]+)\)/g)) {
+            if (/^[a-z]+:/i.test(target)) continue;
+            const [file, anchor] = target.split('#', 2);
+            const linked = file ? load(file, ref) : doc;
+            if (anchor) {
+                const anchors = Array.from(linked.matchAll(/^#{1,6}\s+(.+)$/gm), ([, heading]) =>
+                    heading.toLowerCase().replace(/[^\w -]/g, '').replace(/\s+/g, '-'));
+                assert.ok(anchors.includes(anchor), `Missing heading for ${target} in ${path}`);
+            }
+        }
+        return doc;
+    });
     const pattern = /https:\/\/(?:raw\.githubusercontent\.com\/[^/) ]+\/TwitchAdSolutions\/|github\.com\/[^/) ]+\/TwitchAdSolutions\/raw\/)[^\s)]+\.js\b/g;
     for (const doc of documentation) {
         for (const install of doc.match(pattern) ?? []) {

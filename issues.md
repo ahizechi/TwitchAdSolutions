@@ -13,15 +13,15 @@ If you're using Chrome with a Manifest V3 based userscript manager (e.g. Tamperm
 
 ## Streams sometimes appear offline when ads occur
 
-This needs to be fixed but currently the exact cause is unknown. https://github.com/pixeltris/TwitchAdSolutions/issues/477
+The cause remains unresolved in [upstream issue #477](https://github.com/pixeltris/TwitchAdSolutions/issues/477).
 
 ## The player shows a loading wheel for a long time
 
-If it says `Blocking ads (stripping)` in the top left of the stream then it's actively removing the ad segments but doesn't have a backup stream to show you. If it doesn't say `Blocking ads (stripping)` provide additional information in https://github.com/pixeltris/TwitchAdSolutions/issues/474
+The `Blocking ads (stripping)` banner means stripping is active and a backup stream is unavailable. See [upstream issue #474](https://github.com/pixeltris/TwitchAdSolutions/issues/474) for the reported behavior.
 
-## The script don't work on mobile (m.twitch.tv)
+## Mobile Twitch is unsupported
 
-There are no plans of implementing the scripts on m.twitch.tv but there are other solutions which blocking ads on Twitch for mobile. See [alternative solutions](full-list.md).
+The scripts target desktop Twitch. See the [catalog](full-list.md) for third-party mobile options.
 
 ## Long black screen during ads
 
@@ -33,7 +33,7 @@ The scripts can reload the player when entering/leaving ads. On some systems thi
 
 `vaft` has a long standing problem of playback problems (freezing / buffering / repeating segments / audio desyncs).
 
-This happens because the script forces the player to consume multiple different m3u8 files during ads and it screws with the player. Simply pressing pause/play often fixes this.
+The player may switch between media playlists during ads, which can interrupt playback. Pausing and resuming can restore playback.
 
 The script is configured to do this automatically for you:
 

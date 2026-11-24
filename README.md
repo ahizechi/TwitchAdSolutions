@@ -1,75 +1,76 @@
 # TwitchAdSolutions
 
-This repo aims to provide multiple solutions for blocking Twitch ads.
+TwitchAdSolutions provides userscripts and uBlock Origin resources for blocking ads on desktop Twitch. This fork maintains the scripts from [pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions), archived on 5 March 2026.
 
-This repository is a fork of [pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions), which was archived on 5 March 2026. This fork builds on the original scripts and retains their attribution. The installers below follow this fork’s `master` branch. Current playback and browser-manager compatibility still need live verification.
+## Status
 
-**Don't combine Twitch specific ad blockers.**
+The scripts target desktop Twitch. Mobile Twitch (`m.twitch.tv`) is unsupported. The code passes offline checks. Live playback and browser and userscript-manager compatibility still need verification.
 
-## Recommendations
+## Quick start
 
-Proxies are the most reliable way of avoiding ads ([buffering / downtime info](full-list.md#proxy-issues)).
+**Don't combine Twitch-specific ad blockers.**
 
-- `TTV LOL PRO` - [chrome](https://chrome.google.com/webstore/detail/ttv-lol-pro/bpaoeijjlplfjbagceilcgbkcdjbomjd) / [firefox](https://addons.mozilla.org/addon/ttv-lol-pro/) / [code](https://github.com/younesaassila/ttv-lol-pro)
+1. Install a userscript manager such as [Violentmonkey](https://violentmonkey.github.io/) or [Tampermonkey](https://www.tampermonkey.net/).
+2. Open the [VAFT userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft.user.js) and confirm installation in the manager.
+3. Reload a desktop Twitch stream. To check injection, open the browser console and look for `hookWorkerFetch (vaft)`. Use the [troubleshooting guide](issues.md) if the message is missing or playback stalls.
 
-Alternatively:
+## Third-party recommendations
 
-- `Twitch Turbo` - https://www.twitch.tv/turbo
-- `Alternate Player for Twitch.tv` - [chrome](https://chrome.google.com/webstore/detail/alternate-player-for-twit/bhplkbgoehhhddaoolmakpocnenplmhf) / [firefox](https://addons.mozilla.org/en-US/firefox/addon/twitch_5/)
-- `Purple AdBlock` - [chrome](https://chrome.google.com/webstore/detail/purple-adblock/lkgcfobnmghhbhgekffaadadhmeoindg) / [firefox](https://addons.mozilla.org/en-US/firefox/addon/purpleadblock/) / [userscript](https://raw.githubusercontent.com/arthurbolsoni/Purple-adblock/refs/heads/main/platform/tampermonkey/dist/purpleadblocker.user.js) / [code](https://github.com/arthurbolsoni/Purple-adblock/)
-- `AdGuard Extra` - [chrome](https://chrome.google.com/webstore/detail/adguard-extra-beta/mglpocjcjbekdckiahfhagndealpkpbj) / [firefox](https://github.com/AdguardTeam/AdGuardExtra/#firefox) / [userscript](https://userscripts.adtidy.org/release/adguard-extra/1.0/adguard-extra.user.js)
-- `vaft` - see below
-- `TTV Ad Mute` - [firefox](https://addons.mozilla.org/en-US/firefox/addon/twitch-tv-ad-mute/) / [code](https://github.com/drj101687/ttv-ad-mute)
+These options come from the upstream catalog and have independent maintainers. Their compatibility and privacy remain unverified. See the [proxy notes](full-list.md#proxy-issues) for reported buffering and downtime.
 
-[Read this for a full list and descriptions.](full-list.md)
+- [TTV LOL PRO](https://github.com/younesaassila/ttv-lol-pro) ([Chrome](https://chrome.google.com/webstore/detail/ttv-lol-pro/bpaoeijjlplfjbagceilcgbkcdjbomjd), [Firefox](https://addons.mozilla.org/addon/ttv-lol-pro/)).
+- [Twitch Turbo](https://www.twitch.tv/turbo).
+- Alternate Player for Twitch.tv ([Chrome](https://chrome.google.com/webstore/detail/alternate-player-for-twit/bhplkbgoehhhddaoolmakpocnenplmhf), [Firefox](https://addons.mozilla.org/en-US/firefox/addon/twitch_5/)).
+- [Purple AdBlock](https://github.com/arthurbolsoni/Purple-adblock/) ([Chrome](https://chrome.google.com/webstore/detail/purple-adblock/lkgcfobnmghhbhgekffaadadhmeoindg), [Firefox](https://addons.mozilla.org/en-US/firefox/addon/purpleadblock/), [userscript](https://raw.githubusercontent.com/arthurbolsoni/Purple-adblock/refs/heads/main/platform/tampermonkey/dist/purpleadblocker.user.js)).
+- [AdGuard Extra](https://github.com/AdguardTeam/AdGuardExtra/#firefox) ([Chrome](https://chrome.google.com/webstore/detail/adguard-extra-beta/mglpocjcjbekdckiahfhagndealpkpbj), [userscript](https://userscripts.adtidy.org/release/adguard-extra/1.0/adguard-extra.user.js)).
+- [TTV Ad Mute](https://github.com/drj101687/ttv-ad-mute) ([Firefox](https://addons.mozilla.org/en-US/firefox/addon/twitch-tv-ad-mute/)).
 
-[Also see this list maintained by @zGato.](https://github.com/zGato/ScrewTwitchAds)
+More options appear in the [full catalog](full-list.md) and [zGato's list](https://github.com/zGato/ScrewTwitchAds).
 
 ## Scripts
 
-The inherited `embed-test` branch is experimental and unsupported. Its userscript uses additional manager permissions and is outside the install options below.
+| Script | Use | Install |
+| --- | --- | --- |
+| VAFT | Recommended. Attempts to find a usable backup stream and can strip ad segments when none is available. | [Userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft.user.js) · [uBlock Origin resource](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js) |
+| video-swap-new | Older alternative. Avoid it for regular playback. | [Userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/video-swap-new/video-swap-new.user.js) · [uBlock Origin resource](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/video-swap-new/video-swap-new-ublock-origin.js) |
 
-**There are better / easier to use methods in the above recommendations.**
+The unmaintained `strip` script is listed in the [legacy catalog](full-list.md#web-browser-scripts-userscript). The inherited `embed-test` branch is experimental, unsupported, and outside the install options.
 
-- vaft - [userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft.user.js) / [ublock](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js)
-  - Attempts to get a clean stream as fast as it can
-  - If it fails to get a clean stream it removes ad segments (no playback until ad-free stream is found)
-- video-swap-new - [userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/video-swap-new/video-swap-new.user.js) / [ublock](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/video-swap-new/video-swap-new-ublock-origin.js)
-  - Attempts to get a clean stream
-  - If it fails to get a clean stream it removes ad segments (no playback until ad-free stream is found)
-  - Not recommended, `vaft` is a better script
+### Userscript installation and updates
 
-## Applying a script (uBlock Origin)
+The fork uses the same `@name` and `@namespace` as the original scripts. To migrate an upstream install, open the fork's userscript URL and accept the replacement in your manager. After replacement, the manager checks the fork's `master` raw URL for updates. Confirm the new update URL in the manager.
 
-- Navigate to the uBlock Origin Dashboard (the extension options)
-- Under the `My filters` tab add `twitch.tv##+js(twitch-videoad)`.
-- Under the `Settings` tab, enable `I am an advanced user`, then click the cog that appears. Modify the value of `userResourcesLocation` from `unset` to the full url of the solution you wish to use (if a url is already in use, add a space after the existing url). e.g. `userResourcesLocation https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js`
-- To ensure uBlock Origin loads the script I recommend that you disable/enable the uBlock Origin extension (or restart your browser).
+The upstream documentation reports that the scripts are incompatible with Greasemonkey. [Userscripts for Safari](https://apps.apple.com/us/app/userscripts/id1463298887) was also listed upstream. See the [troubleshooting guide](issues.md) for browser permission settings.
 
-To stop using the script, remove its Twitch filter in `My filters` and remove only the script URL you added to `userResourcesLocation`. If the setting has no other URLs, set it to `unset`.
+### uBlock Origin installation
 
-To pin the uBlock resource to a reviewed snapshot, replace `master` in the supplied raw URL with that fork commit’s full SHA. A pinned URL stays on that commit until you change it.
+1. Open the uBlock Origin dashboard. In **My filters**, add `twitch.tv##+js(twitch-videoad)` and apply the change.
+2. In **Settings**, enable **I am an advanced user** and open its settings. Add the selected uBlock resource URL to `userResourcesLocation`. Keep existing resource URLs and separate them with spaces.
+3. Restart uBlock Origin or the browser, then reload Twitch. The browser console should show `hookWorkerFetch` for the selected script.
 
-*The scripts __may randomly stop being applied by uBlock Origin__ for unknown reasons ([#200](https://github.com/pixeltris/TwitchAdSolutions/issues/200)). It's recommended to use the userscript versions instead.*
+To remove it, delete the Twitch filter and only the resource URL added for this script. Use `unset` if there are no URLs left.
 
-## Applying a script (userscript)
+The installer URLs follow `master`. To choose when to take new code, replace `master` in the raw resource URL with the full SHA of a reviewed fork commit. Cached or intermittent injection was reported in [upstream issue #200](https://github.com/pixeltris/TwitchAdSolutions/issues/200).
 
-Viewing one of the userscript files should prompt the given script to be added when you have a userscript manager installed.
+## What this fork changes
 
-To update an installation from the original repository, use the fork’s installer and check its update URL in your userscript manager. Review the new script before replacing your copy.
+- Playlist requests report download failures and fall back to the original response if an optional rewrite fails.
+- Ad and click-tracking URLs are replaced in playlists processed by the stripping path.
+- Playlist handling accepts relative and query-bearing variant URLs, and backup selection can retry on a later ad break.
+- Player reloads preserve newer preference changes and release obsolete playback state.
+- Install and update URLs point to the fork.
+- The manual release workflow uses a new `fork-v` tag and the exact `master` commit that passed offline checks.
 
-Userscript managers:
+## Reporting problems
 
-- https://violentmonkey.github.io/
-- https://www.tampermonkey.net/
-- https://apps.apple.com/us/app/userscripts/id1463298887
-
-*Greasemonkey doesn't work with the scripts.*
-
-## Issues with the scripts
-
-If the script doesn't work or you're experiencing freezing / buffering issues see [issues.md](issues.md)
+GitHub Issues and Discussions are disabled on this fork. The [troubleshooting guide](issues.md) lists known symptoms and links to archived upstream reports.
 
 ## Development
 
-With Node.js 24 or newer, run `node tests/check.cjs` to check syntax, userscript/uBlock parity, install URLs, and playback behavior with offline fixtures.
+Run `node tests/check.cjs` with Node.js. The command was verified locally with Node.js 26.13.1 and uses offline fixtures for syntax, userscript and uBlock resource parity, installation URLs, and playback behavior. The GitHub workflows select Node.js 24.
+
+When available on GitHub, the manual **Publish fork release** workflow runs on `master` only. It requires a new `fork-v` tag and checks that the tag points to the tested commit before publishing.
+
+## Credits and license
+
+Credit to [pixeltris and the TwitchAdSolutions contributors](https://github.com/pixeltris/TwitchAdSolutions), [cleanlock/VideoAdBlockForTwitch](https://github.com/cleanlock/VideoAdBlockForTwitch#credits), and [saucettv/VideoAdBlockForTwitch](https://github.com/saucettv/VideoAdBlockForTwitch). See the repository's [LICENSE](LICENSE).
