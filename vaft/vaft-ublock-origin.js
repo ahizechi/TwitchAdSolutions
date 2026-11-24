@@ -328,7 +328,7 @@ twitch-videoad.js text/javascript
                         const encodingsM3u8 = original;
                         const serverTime = getServerTimeFromM3u8(encodingsM3u8);
                         let streamInfo = StreamInfos[channelName];
-                        if (streamInfo && (streamInfo.EncodingsBaseUrl !== baseUrl || !await isVariantAvailable(realFetch, streamInfo.FirstVariantUrl))) {
+                        if (streamInfo && !await isVariantAvailable(realFetch, streamInfo.FirstVariantUrl)) {
                             streamInfo = null;
                         }
                         if (!streamInfo) {
@@ -407,7 +407,11 @@ twitch-videoad.js text/javascript
                         }
                         streamInfo.LastPlayerReload = Date.now();
                         const updated = replaceServerTimeInM3u8(streamInfo.IsUsingModifiedM3U8 ? streamInfo.ModifiedM3U8 : streamInfo.EncodingsM3U8, serverTime);
-                        return playlistResponse(response, original, updated);
+                        streamInfo.UsherParams = new URL(url).search;
+                        const cachedBase = new URL(streamInfo.EncodingsBaseUrl);
+                        const currentBase = new URL(baseUrl);
+                        const changedLocation = cachedBase.origin !== currentBase.origin || cachedBase.pathname !== currentBase.pathname;
+                        return playlistResponse(response, original, changedLocation ? absolutePlaylist(updated, cachedBase.href) : updated);
                     } catch {
                         console.error('Could not process Twitch master playlist');
                         return response;

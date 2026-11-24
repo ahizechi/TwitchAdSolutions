@@ -159,6 +159,24 @@ const cases = [
             assert.equal(restoredMaster.value.headers.get('x-fixture'), 'fallback');
             assert.equal(await restoredMaster.value.text(), body);
 
+            const reload = (await playback(source, path)).worker;
+            const refreshedMaster = masterUrl + '&p=2&sig=second&token=dummy';
+            const modified = masterPlaylist(mediaUrl) + '# cached playback choice\n';
+            fixture(reload, refreshedMaster, masterPlaylist(mediaUrl));
+            reload.run(`
+                const originalStream = StreamInfos.test;
+                if (typeof AdSignifier !== 'undefined') {
+                    originalStream.ModifiedM3U8 = ${json(modified)};
+                    originalStream.IsUsingModifiedM3U8 = true;
+                } else {
+                    originalStream.BackupEncodings = ${json(modified)};
+                }
+            `);
+            const reloaded = await outcome(reload.run(`fetch(${json(refreshedMaster)})`));
+            assert.equal(reloaded.state, 'fulfilled');
+            assert.equal(reload.run('StreamInfos.test === originalStream'), true, 'rotating master query parameters retain channel state');
+            assert.equal(await reloaded.value.text(), modified, 'player reload receives the prepared playlist');
+
             const backup = (await playback(source, path)).worker;
             backup.run(`
                 if (typeof PlayerReloadMinimalRequestsTime !== 'undefined') PlayerReloadMinimalRequestsTime = 0;

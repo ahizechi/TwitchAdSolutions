@@ -530,7 +530,7 @@
                     try {
                         const baseUrl = response.url || url;
                         let streamInfo = StreamInfos[channelName];
-                        if (streamInfo && (streamInfo.EncodingsBaseUrl !== baseUrl || !await isVariantAvailable(realFetch, streamInfo.FirstVariantUrl))) {
+                        if (streamInfo && !await isVariantAvailable(realFetch, streamInfo.FirstVariantUrl)) {
                             streamInfo = null;
                         }
                         if (!streamInfo) {
@@ -566,7 +566,11 @@
                         }
                         streamInfo.IsMovingOffBackupEncodings = false;
                         const updated = replaceServerTimeInM3u8(streamInfo.BackupEncodings || streamInfo.Encodings, getServerTimeFromM3u8(original));
-                        return playlistResponse(response, original, updated);
+                        streamInfo.UsherParams = new URL(url).search;
+                        const cachedBase = new URL(streamInfo.EncodingsBaseUrl);
+                        const currentBase = new URL(baseUrl);
+                        const changedLocation = cachedBase.origin !== currentBase.origin || cachedBase.pathname !== currentBase.pathname;
+                        return playlistResponse(response, original, changedLocation ? absolutePlaylist(updated, cachedBase.href) : updated);
                     } catch {
                         console.error('Could not process Twitch master playlist');
                         return response;
