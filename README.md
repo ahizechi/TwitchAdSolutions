@@ -1,8 +1,8 @@
-Project archived on 2026-03-05. I'm no longer interested in Twitch. So much garbage content. Every time I go on the site it's worse.
-
 # TwitchAdSolutions
 
 This repo aims to provide multiple solutions for blocking Twitch ads.
+
+This repository is a fork of [pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions), which was archived on 5 March 2026. This fork builds on the original scripts and retains their attribution. The installers below follow this fork’s `master` branch. Current playback and browser-manager compatibility still need live verification.
 
 **Don't combine Twitch specific ad blockers.**
 
@@ -29,10 +29,10 @@ Alternatively:
 
 **There are better / easier to use methods in the above recommendations.**
 
-- vaft - [userscript](https://github.com/pixeltris/TwitchAdSolutions/raw/master/vaft/vaft.user.js) / [ublock](https://raw.githubusercontent.com/pixeltris/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js) / [ublock (permalink)](https://raw.githubusercontent.com/pixeltris/TwitchAdSolutions/f8f86706daf90daa534b26bce5b2f01238667d5f/vaft/vaft-ublock-origin.js)
+- vaft - [userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft.user.js) / [ublock](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js)
   - Attempts to get a clean stream as fast as it can
   - If it fails to get a clean stream it removes ad segments (no playback until ad-free stream is found)
-- video-swap-new - [userscript](https://github.com/pixeltris/TwitchAdSolutions/raw/master/video-swap-new/video-swap-new.user.js) / [ublock](https://raw.githubusercontent.com/pixeltris/TwitchAdSolutions/master/video-swap-new/video-swap-new-ublock-origin.js) / [ublock (permalink)](https://raw.githubusercontent.com/pixeltris/TwitchAdSolutions/f8f86706daf90daa534b26bce5b2f01238667d5f/video-swap-new/video-swap-new-ublock-origin.js)
+- video-swap-new - [userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/video-swap-new/video-swap-new.user.js) / [ublock](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/video-swap-new/video-swap-new-ublock-origin.js)
   - Attempts to get a clean stream
   - If it fails to get a clean stream it removes ad segments (no playback until ad-free stream is found)
   - Not recommended, `vaft` is a better script
@@ -41,18 +41,20 @@ Alternatively:
 
 - Navigate to the uBlock Origin Dashboard (the extension options)
 - Under the `My filters` tab add `twitch.tv##+js(twitch-videoad)`.
-- Under the `Settings` tab, enable `I am an advanced user`, then click the cog that appears. Modify the value of `userResourcesLocation` from `unset` to the full url of the solution you wish to use (if a url is already in use, add a space after the existing url). e.g. `userResourcesLocation https://raw.githubusercontent.com/pixeltris/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js` 
+- Under the `Settings` tab, enable `I am an advanced user`, then click the cog that appears. Modify the value of `userResourcesLocation` from `unset` to the full url of the solution you wish to use (if a url is already in use, add a space after the existing url). e.g. `userResourcesLocation https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js`
 - To ensure uBlock Origin loads the script I recommend that you disable/enable the uBlock Origin extension (or restart your browser).
 
 To stop using the script, remove its Twitch filter in `My filters` and remove only the script URL you added to `userResourcesLocation`. If the setting has no other URLs, set it to `unset`.
 
-*For the sake of security it's recommended to use a permalink when using uBlock Origin (permalinks do not auto update).*
+To pin the uBlock resource to a reviewed snapshot, replace `master` in the supplied raw URL with that fork commit’s full SHA. A pinned URL stays on that commit until you change it.
 
 *The scripts __may randomly stop being applied by uBlock Origin__ for unknown reasons ([#200](https://github.com/pixeltris/TwitchAdSolutions/issues/200)). It's recommended to use the userscript versions instead.*
 
 ## Applying a script (userscript)
 
 Viewing one of the userscript files should prompt the given script to be added when you have a userscript manager installed.
+
+To update an installation from the original repository, use the fork’s installer and check its update URL in your userscript manager. Review the new script before replacing your copy.
 
 Userscript managers:
 

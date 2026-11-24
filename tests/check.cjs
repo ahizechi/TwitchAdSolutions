@@ -32,6 +32,30 @@ function bodyOf(source, ublock) {
     return source.slice(source.indexOf(marker) + marker.length);
 }
 
+function checkInstallUrls(scripts, ref) {
+    const raw = 'https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/';
+    const knownUrls = scripts.map(({ path }) => raw + path);
+    const documentation = ['README.md', 'full-list.md'].map(path => load(path, ref));
+    const pattern = /https:\/\/(?:raw\.githubusercontent\.com\/[^/) ]+\/TwitchAdSolutions\/|github\.com\/[^/) ]+\/TwitchAdSolutions\/raw\/)[^\s)]+\.js\b/g;
+    for (const doc of documentation) {
+        for (const install of doc.match(pattern) ?? []) {
+            assert.ok(knownUrls.includes(install), `Install link does not select a shipped fork script: ${install}`);
+        }
+    }
+    for (const entry of scripts) {
+        const expected = raw + entry.path;
+        const [readme, catalog] = documentation;
+        assert.ok((entry.name === 'strip' ? catalog : readme).includes(expected), `Missing install link for ${entry.path}`);
+        if (!entry.ublock) {
+            const metadata = entry.fullSource.split('// ==/UserScript==')[0];
+            const updateUrl = metadata.match(/^\/\/ @updateURL\s+(.+)$/m)?.[1];
+            const downloadUrl = metadata.match(/^\/\/ @downloadURL\s+(.+)$/m)?.[1];
+            assert.equal(updateUrl, expected, `Update URL for ${entry.path}`);
+            assert.equal(downloadUrl, expected, `Download URL for ${entry.path}`);
+        }
+    }
+}
+
 async function main() {
     const args = process.argv.slice(2);
     let ref;
@@ -42,9 +66,10 @@ async function main() {
         else if (option === '--case' && args[0]) only = args.shift();
         else throw new Error('Usage: node tests/check.cjs [--ref <git-ref>] [--case <test-name>]');
     }
-    const scripts = formats.map(([path, name, ublock]) => ({
-        path, name, ublock, source: bodyOf(load(path, ref), ublock),
-    }));
+    const scripts = formats.map(([path, name, ublock]) => {
+        const fullSource = load(path, ref);
+        return {path, name, ublock, fullSource, source: bodyOf(fullSource, ublock)};
+    });
     let failed = 0;
     const escaped = [];
     const onUnhandled = error => escaped.push(error);
@@ -59,7 +84,7 @@ async function main() {
         if (!only) {
             for (const script of scripts) {
                 try {
-                    execFileSync(process.execPath, ['--check', '-'], { input: script.source, stdio: 'pipe' });
+                    execFileSync(process.execPath, ['--check', '-'], { input: script.ublock ? script.source : script.fullSource, stdio: 'pipe' });
                     report(`JavaScript syntax ${script.path}`);
                 } catch (error) {
                     report(`JavaScript syntax ${script.path}`, error);
@@ -77,6 +102,14 @@ async function main() {
                 } catch (error) {
                     report(`userscript and uBlock parity ${name}`, new Error(error.message.split('\n')[0]));
                 }
+            }
+        }
+        if (!only) {
+            try {
+                checkInstallUrls(scripts, ref);
+                report('install and update URLs select shipped fork scripts');
+            } catch (error) {
+                report('install and update URLs select shipped fork scripts', error);
             }
         }
         const applicable = cases.filter(test => !only || test.name === only);
