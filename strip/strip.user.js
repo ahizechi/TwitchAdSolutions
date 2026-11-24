@@ -210,7 +210,14 @@
                     return new Promise(function(resolve, reject) {
                         const processAfter = async function(response) {
                             if (response.status === 200) {
-                                resolve(new Response(stripAdSegments(await response.text())));
+                                const original = await response.clone().text();
+                                try {
+                                    const updated = stripAdSegments(original);
+                                    resolve(updated === original ? response : new Response(updated));
+                                } catch {
+                                    console.error('Could not process Twitch media playlist');
+                                    resolve(response);
+                                }
                             } else {
                                 resolve(response);
                             }
@@ -229,21 +236,27 @@
                     return new Promise(function(resolve, reject) {
                         const processAfter = async function(response) {
                             if (response.status === 200) {
-                                const channelName = (new URL(url)).pathname.match(/([^\/]+)(?=\.\w+$)/)[0];
-                                let encodingsM3u8 = await response.text();
-                                const cachedM3u8 = M3U8ChannelCache.get(channelName);
-                                if (cachedM3u8 && (await realFetch(cachedM3u8.match(/^https:.*\.m3u8$/m)[0])).status === 200) {
-                                    encodingsM3u8 = replaceServerTimeInM3u8(cachedM3u8, getServerTimeFromM3u8(encodingsM3u8));
-                                } else if (encodingsM3u8.includes('.m3u8')) {
-                                    M3U8ChannelCache.set(channelName, encodingsM3u8);
-                                }
-                                const lines = encodingsM3u8.replaceAll('\r', '').split('\n');
-                                for (let i = 0; i < lines.length - 1; i++) {
-                                    if (lines[i].startsWith('#EXT-X-STREAM-INF') && lines[i + 1].includes('.m3u8')) {
-                                        M3U8Whitelist.add(lines[i + 1]);
+                                const original = await response.clone().text();
+                                try {
+                                    const channelName = (new URL(url)).pathname.match(/([^\/]+)(?=\.\w+$)/)[0];
+                                    let encodingsM3u8 = original;
+                                    const cachedM3u8 = M3U8ChannelCache.get(channelName);
+                                    if (cachedM3u8 && (await realFetch(cachedM3u8.match(/^https:.*\.m3u8$/m)[0])).status === 200) {
+                                        encodingsM3u8 = replaceServerTimeInM3u8(cachedM3u8, getServerTimeFromM3u8(encodingsM3u8));
+                                    } else if (encodingsM3u8.includes('.m3u8')) {
+                                        M3U8ChannelCache.set(channelName, encodingsM3u8);
                                     }
+                                    const lines = encodingsM3u8.replaceAll('\r', '').split('\n');
+                                    for (let i = 0; i < lines.length - 1; i++) {
+                                        if (lines[i].startsWith('#EXT-X-STREAM-INF') && lines[i + 1].includes('.m3u8')) {
+                                            M3U8Whitelist.add(lines[i + 1]);
+                                        }
+                                    }
+                                    resolve(encodingsM3u8 === original ? response : new Response(encodingsM3u8));
+                                } catch {
+                                    console.error('Could not process Twitch master playlist');
+                                    resolve(response);
                                 }
-                                resolve(new Response(encodingsM3u8));
                             } else {
                                 resolve(response);
                             }

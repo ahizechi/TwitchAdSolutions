@@ -117,6 +117,10 @@
                     ${stripAdSegments.toString()}
                     ${processM3U8.toString()}
                     ${hookWorkerFetch.toString()}
+                    ${playlistResponse.toString()}
+                    ${isVariantAvailable.toString()}
+                    ${absolutePlaylist.toString()}
+                    ${resolvePlaylistUri.toString()}
                     ${declareOptions.toString()}
                     ${getAccessToken.toString()}
                     ${gqlRequest.toString()}
@@ -212,23 +216,21 @@
         req.send();
         return req.responseText;
     }
-    function setStreamInfoUrls(streamInfo, encodingsM3u8) {
+    function setStreamInfoUrls(streamInfo, encodingsM3u8, baseUrl, isBackup = false) {
         const lines = encodingsM3u8.replaceAll('\r', '').split('\n');
-        for (let i = 0; i < lines.length; i++) {
-            if (!lines[i].startsWith('#') && lines[i].includes('.m3u8')) {
-                StreamInfosByUrl[lines[i].trimEnd()] = streamInfo;
-            }
-            if (lines[i].startsWith('#EXT-X-STREAM-INF') && lines[i + 1].includes('.m3u8')) {
-                const attributes = parseAttributes(lines[i]);
-                const resolution = attributes['RESOLUTION'];
-                if (resolution) {
-                    const resolutionInfo = {
-                        Resolution: resolution,
-                        FrameRate: attributes['FRAME-RATE'],
-                        Url: lines[i + 1]
-                    };
-                    streamInfo.Urls.set(lines[i + 1].trimEnd(), resolutionInfo);
-                }
+        const variants = [];
+        for (let i = 0; i < lines.length - 1; i++) {
+            if (!lines[i].startsWith('#EXT-X-STREAM-INF')) continue;
+            const url = resolvePlaylistUri(lines[i + 1], baseUrl);
+            if (!url) continue;
+            const attributes = parseAttributes(lines[i].slice(lines[i].indexOf(':') + 1));
+            variants.push([url, attributes]);
+        }
+        for (const [url, attributes] of variants) {
+            if (!isBackup) streamInfo.FirstVariantUrl ??= url;
+            StreamInfosByUrl[url] = streamInfo;
+            if (attributes.RESOLUTION) {
+                streamInfo.Urls.set(url, {Resolution: attributes.RESOLUTION, FrameRate: attributes['FRAME-RATE'], Url: url});
             }
         }
     }
@@ -255,9 +257,9 @@
         }
         if (streamInfo.BackupEncodings && !streamInfo.BackupEncodings.includes(url)) {
             const streamM3u8Url = getStreamUrlForResolution(streamInfo.BackupEncodings, resolutionInfo);
-            const streamM3u8Response = await realFetch(streamM3u8Url);
-            if (streamM3u8Response.status === 200) {
-                return await streamM3u8Response.text();
+            const streamM3u8Response = streamM3u8Url ? await realFetch(streamM3u8Url) : null;
+            if (streamM3u8Response?.status === 200) {
+                return absolutePlaylist(await streamM3u8Response.text(), streamM3u8Response.url || streamM3u8Url);
             }
         }
         let backupPlayerTypeInfo = '';
@@ -273,11 +275,11 @@
                         urlInfo.searchParams.set('token', accessToken.data.streamPlaybackAccessToken.value);
                         const encodingsM3u8Response = await realFetch(urlInfo.href);
                         if (encodingsM3u8Response != null && encodingsM3u8Response.status === 200) {
-                            let encodingsM3u8 = await encodingsM3u8Response.text();
+                            let encodingsM3u8 = absolutePlaylist(await encodingsM3u8Response.text(), encodingsM3u8Response.url || urlInfo.href);
                             const streamM3u8Url = getStreamUrlForResolution(encodingsM3u8, resolutionInfo);
-                            const streamM3u8Response = await realFetch(streamM3u8Url);
-                            if (streamM3u8Response.status === 200) {
-                                const backTextStr = await streamM3u8Response.text();
+                            const streamM3u8Response = streamM3u8Url ? await realFetch(streamM3u8Url) : null;
+                            if (streamM3u8Response?.status === 200) {
+                                const backTextStr = absolutePlaylist(await streamM3u8Response.text(), streamM3u8Response.url || streamM3u8Url);
                                 if ((!backTextStr.includes(AD_SIGNIFIER) && (SimulatedAdsDepth == 0 || i >= SimulatedAdsDepth - 1)) || i >= playerTypes.length - 1) {
                                     result = backTextStr;
                                     backupPlayerTypeInfo = ' (' + playerType + ')';
@@ -286,12 +288,18 @@
                                     if (streamInfo.Encodings != null) {
                                         // Low resolution streams will reduce the number of resolutions in the UI. To fix this we merge the low res URLs into the main m3u8
                                         const normalEncodingsM3u8 = streamInfo.Encodings;
-                                        const normalLines = normalEncodingsM3u8.replaceAll('\r', '').split('\n');
+                                        const normalLines = absolutePlaylist(normalEncodingsM3u8, streamInfo.EncodingsBaseUrl).replaceAll('\r', '').split('\n');
+                                        const backupLines = encodingsM3u8.replaceAll('\r', '').split('\n');
                                         for (let j = 0; j < normalLines.length - 1; j++) {
                                             if (normalLines[j].startsWith('#EXT-X-STREAM-INF')) {
                                                 const resSettings = parseAttributes(normalLines[j].substring(normalLines[j].indexOf(':') + 1));
-                                                const lowResUrl = getStreamUrlForResolution(encodingsM3u8, streamInfo.Urls.get(normalLines[j + 1].trimEnd()));
-                                                const lowResInf = encodingsM3u8.match(new RegExp(`^.*(?=\n.*${lowResUrl})`, 'm'))[0];
+                                                const resolution = streamInfo.Urls.get(normalLines[j + 1].trimEnd());
+                                                if (!resolution) continue;
+                                                const lowResUrl = getStreamUrlForResolution(encodingsM3u8, resolution);
+                                                const lowResIndex = backupLines.findIndex((line, index) =>
+                                                    line.startsWith('#EXT-X-STREAM-INF') && backupLines[index + 1]?.trimEnd() === lowResUrl);
+                                                if (!lowResUrl || lowResIndex === -1) continue;
+                                                const lowResInf = backupLines[lowResIndex];
                                                 const lowResSettings = parseAttributes(lowResInf.substring(lowResInf.indexOf(':') + 1));
                                                 //console.log('map ' + resSettings['RESOLUTION'] + ' to ' + lowResSettings['RESOLUTION']);
                                                 const codecsKey = 'CODECS';
@@ -310,7 +318,7 @@
                                         encodingsM3u8 = normalLines.join('\n');
                                     }
                                     streamInfo.BackupEncodings = encodingsM3u8;
-                                    setStreamInfoUrls(streamInfo, encodingsM3u8);
+                                    setStreamInfoUrls(streamInfo, encodingsM3u8, streamInfo.EncodingsBaseUrl, true);
                                 }
                             }
                         }
@@ -381,10 +389,10 @@
             return textStr;
         }
         const haveAdTags = textStr.includes(AD_SIGNIFIER) || (SimulatedAdsDepth > 0 && (!streamInfo.BackupEncodings || !streamInfo.BackupEncodings.includes(url) || SimulatedAdsDepth - 1 > streamInfo.BackupEncodingsPlayerTypeIndex));
-        if (streamInfo.BackupEncodings) {
-            const streamM3u8Url = streamInfo.Encodings.match(/^https:.*\.m3u8$/m)[0];
-            const streamM3u8Response = await realFetch(streamM3u8Url);
-            if (streamM3u8Response.status == 200) {
+        if (streamInfo.BackupEncodings && streamInfo.FirstVariantUrl) {
+            const streamM3u8Url = streamInfo.FirstVariantUrl;
+            const streamM3u8Response = streamM3u8Url ? await realFetch(streamM3u8Url) : null;
+            if (streamM3u8Response?.status == 200) {
                 const streamM3u8 = await streamM3u8Response.text();
                 if (streamM3u8 != null) {
                     if (!streamM3u8.includes(AD_SIGNIFIER) && SimulatedAdsDepth == 0) {
@@ -423,6 +431,58 @@
         updateAdblockBannerForStream(streamInfo);
         return textStr;
     }
+    function resolvePlaylistUri(uri, baseUrl) {
+        try {
+            const url = new URL(uri.trim(), baseUrl);
+            return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function absolutePlaylist(text, baseUrl) {
+        return text.split('\n').map(line => {
+            if (!line.trim() || /^[a-z][a-z\d+.-]*:/i.test(line.trimStart())) {
+                return line;
+            }
+            if (line.startsWith('#')) {
+                return line.replace(/\bURI="([^"]+)"/g, (attribute, uri) => {
+                    if (/^[a-z][a-z\d+.-]*:/i.test(uri)) return attribute;
+                    const url = resolvePlaylistUri(uri, baseUrl);
+                    return url ? 'URI="' + url + '"' : attribute;
+                });
+            }
+            return resolvePlaylistUri(line, baseUrl) ?? line;
+        }).join('\n');
+    }
+
+    async function isVariantAvailable(realFetch, url) {
+        if (!url) return false;
+        try {
+            return (await realFetch(url)).status === 200;
+        } catch {
+            return false;
+        }
+    }
+
+    function playlistResponse(response, original, updated) {
+        if (updated === original) return response;
+        const headers = new Headers(response.headers);
+        headers.delete('Content-Length');
+        headers.delete('Content-Encoding');
+        const result = new Response(updated, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+        });
+        Object.defineProperties(result, {
+            url: {value: response.url},
+            redirected: {value: response.redirected},
+            type: {value: response.type},
+        });
+        return result;
+    }
+
     function hookWorkerFetch() {
         console.log('hookWorkerFetch (video-swap-new)');
         const realFetch = fetch;
@@ -441,32 +501,18 @@
                     });
                 }
                 url = url.trimEnd();
-                if (url.endsWith('m3u8')) {
-                    return new Promise(function(resolve, reject) {
-                        const processAfter = async function(response) {
-                            if (response.status === 200) {
-                                const str = await processM3U8(url, await response.text(), realFetch);
-                                resolve(new Response(str, {
-                                    status: response.status,
-                                    statusText: response.statusText,
-                                    headers: response.headers
-                                }));
-                            } else {
-                                resolve(response);
-                            }
-                        };
-                        const send = function() {
-                            return realFetch(url, options).then(function(response) {
-                                return processAfter(response);
-                            })['catch'](function(err) {
-                                console.log('fetch hook err ' + err);
-                                reject(err);
-                            });
-                        };
-                        send();
-                    });
-                }
-                else if (url.includes('/channel/hls/') && !url.includes('picture-by-picture')) {
+                const isMasterPlaylist = url.includes('/channel/hls/') && !url.includes('picture-by-picture');
+                if (!isMasterPlaylist && (StreamInfosByUrl[url] || url.split(/[?#]/, 1)[0].endsWith('.m3u8'))) {
+                    const response = await realFetch(url, options);
+                    if (response.status !== 200) return response;
+                    const original = await response.clone().text();
+                    try {
+                        return playlistResponse(response, original, await processM3U8(url, original, realFetch));
+                    } catch {
+                        console.error('Could not process Twitch media playlist');
+                        return response;
+                    }
+                } else if (isMasterPlaylist) {
                     V2API = url.includes('/api/v2/');
                     const channelName = (new URL(url)).pathname.match(/([^\/]+)(?=\.\w+$)/)[0];
                     if (OPT_FORCE_ACCESS_TOKEN_PLAYER_TYPE) {
@@ -475,58 +521,53 @@
                         tempUrl.searchParams.delete('parent_domains');
                         url = tempUrl.toString();
                     }
-                    // - First m3u8 request is the m3u8 with the video encodings (360p,480p,720p,etc).
-                    // - Second m3u8 request is the m3u8 for the given encoding obtained in the first request. At this point we will know if there's ads.
-                    let streamInfo = StreamInfos[channelName];
-                    if (streamInfo != null && streamInfo.Encodings != null && (await realFetch(streamInfo.Encodings.match(/^https:.*\.m3u8$/m)[0])).status !== 200) {
-                        // The cached encodings are dead (the stream probably restarted)
-                        streamInfo = null;
-                    }
-                    let serverTime = null;
-                    if (streamInfo == null || streamInfo.Encodings == null) {
-                        StreamInfos[channelName] = streamInfo = {
-                            RequestedAds: new Set(),
-                            Encodings: null,
-                            BackupEncodings: null,
-                            BackupEncodingsStatus: new Map(),
-                            BackupEncodingsPlayerTypeIndex: -1,
-                            IsMovingOffBackupEncodings: false,
-                            IsMidroll: false,
-                            IsStrippingAdSegments: false,
-                            NumStrippedAdSegments: 0,
-                            UseFallbackStream: false,
-                            ChannelName: channelName,
-                            UsherParams: (new URL(url)).search,
-                            Urls: new Map(),
-                        };
-                        const encodingsM3u8Response = await realFetch(url, options);
-                        if (encodingsM3u8Response != null && encodingsM3u8Response.status === 200) {
-                            const encodingsM3u8 = await encodingsM3u8Response.text();
-                            streamInfo.Encodings = encodingsM3u8;
-                            setStreamInfoUrls(streamInfo, encodingsM3u8);
-                            serverTime = getServerTimeFromM3u8(encodingsM3u8);
+                    const response = await realFetch(url, options);
+                    if (response.status !== 200) return response;
+                    const original = await response.clone().text();
+                    try {
+                        const baseUrl = response.url || url;
+                        let streamInfo = StreamInfos[channelName];
+                        if (streamInfo && (streamInfo.EncodingsBaseUrl !== baseUrl || !await isVariantAvailable(realFetch, streamInfo.FirstVariantUrl))) {
+                            streamInfo = null;
+                        }
+                        if (!streamInfo) {
+                            streamInfo = {
+                                RequestedAds: new Set(),
+                                Encodings: original,
+                                EncodingsBaseUrl: baseUrl,
+                                FirstVariantUrl: null,
+                                BackupEncodings: null,
+                                BackupEncodingsStatus: new Map(),
+                                BackupEncodingsPlayerTypeIndex: -1,
+                                IsMovingOffBackupEncodings: false,
+                                IsMidroll: false,
+                                IsStrippingAdSegments: false,
+                                NumStrippedAdSegments: 0,
+                                UseFallbackStream: false,
+                                ChannelName: channelName,
+                                UsherParams: (new URL(url)).search,
+                                Urls: new Map(),
+                            };
+                            setStreamInfoUrls(streamInfo, original, baseUrl);
                             const resolutionInfo = streamInfo.Urls.values().next().value;
-                            const streamM3u8Response = await realFetch(resolutionInfo.Url);
-                            if (streamM3u8Response.status == 200) {
-                                const streamM3u8 = await streamM3u8Response.text();
-                                if (streamM3u8.includes(AD_SIGNIFIER) || SimulatedAdsDepth > 0) {
-                                    await onFoundAd(streamInfo, streamM3u8, false, realFetch, resolutionInfo.Url, resolutionInfo);
+                            if (resolutionInfo) {
+                                const mediaResponse = await realFetch(resolutionInfo.Url);
+                                if (mediaResponse.status === 200) {
+                                    const media = await mediaResponse.text();
+                                    if (media.includes(AD_SIGNIFIER) || SimulatedAdsDepth > 0) {
+                                        await onFoundAd(streamInfo, media, false, realFetch, resolutionInfo.Url, resolutionInfo);
+                                    }
                                 }
-                            } else {
-                                return streamM3u8Response;
                             }
-                        } else {
-                            return encodingsM3u8Response;
+                            StreamInfos[channelName] = streamInfo;
                         }
+                        streamInfo.IsMovingOffBackupEncodings = false;
+                        const updated = replaceServerTimeInM3u8(streamInfo.BackupEncodings || streamInfo.Encodings, getServerTimeFromM3u8(original));
+                        return playlistResponse(response, original, updated);
+                    } catch {
+                        console.error('Could not process Twitch master playlist');
+                        return response;
                     }
-                    if (!serverTime) {
-                        const encodingsM3u8Response = await realFetch(url, options);
-                        if (encodingsM3u8Response != null && encodingsM3u8Response.status === 200) {
-                            serverTime = getServerTimeFromM3u8(await encodingsM3u8Response.text());
-                        }
-                    }
-                    streamInfo.IsMovingOffBackupEncodings = false;
-                    return new Response(replaceServerTimeInM3u8(streamInfo.BackupEncodings ? streamInfo.BackupEncodings : streamInfo.Encodings, serverTime));
                 }
             }
             return realFetch.apply(this, arguments);
@@ -575,7 +616,7 @@
                 }
             }
         }
-        return closestResolutionUrl.trimEnd();
+        return closestResolutionUrl?.trimEnd() ?? null;
     }
     function getAccessToken(channelName, playerType) {
         const realPlayerType = playerType.replace('-ALT', '');
@@ -648,7 +689,7 @@
                     const key = x.substring(0, idx);
                     const value = x.substring(idx +1);
                     const num = Number(value);
-                    return [key, Number.isNaN(num) ? value.startsWith('"') ? JSON.parse(value) : value : num]
+                    return [key, Number.isNaN(num) ? value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value : num]
                 }));
     }
     function postTwitchWorkerMessage(key, value) {

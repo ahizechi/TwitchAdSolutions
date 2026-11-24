@@ -144,6 +144,38 @@ const cases = [
             const refreshed = await outcome(worker.run(`fetch(${json(masterUrl)})`));
             assert.equal(refreshed.state, 'fulfilled', 'relative query-bearing variants are valid during cache health checks');
             assert.ok(worker.evaluate('requests').some(record => record.url === resolved));
+            worker.run(`processM3U8 = async () => { throw new Error('fixture media transform failed'); };`);
+            const restoredMedia = await outcome(worker.run(`fetch(${json(resolved)})`));
+            assert.equal(restoredMedia.state, 'fulfilled', 'optional media rewriting falls back to the downloaded bytes');
+            assert.equal(restoredMedia.value.url, resolved);
+            assert.equal(await restoredMedia.value.text(), plainMedia);
+
+            const secondChannel = masterUrl.replace('/test.m3u8', '/second.m3u8');
+            fixture(worker, secondChannel, body, { headers: { 'x-fixture': 'fallback' } });
+            worker.run(`parseAttributes = () => { throw new Error('fixture master transform failed'); };`);
+            const restoredMaster = await outcome(worker.run(`fetch(${json(secondChannel)})`));
+            assert.equal(restoredMaster.state, 'fulfilled', 'optional master rewriting falls back to the downloaded bytes');
+            assert.equal(restoredMaster.value.url, secondChannel);
+            assert.equal(restoredMaster.value.headers.get('x-fixture'), 'fallback');
+            assert.equal(await restoredMaster.value.text(), body);
+
+            const backup = (await playback(source, path)).worker;
+            backup.run(`
+                if (typeof PlayerReloadMinimalRequestsTime !== 'undefined') PlayerReloadMinimalRequestsTime = 0;
+                graphQLResponse = {status: 200, body: JSON.stringify({
+                    data: {streamPlaybackAccessToken: {signature: 'dummy-sig', value: 'dummy-token'}}
+                })};
+            `);
+            const backupMaster = `${masterUrl}&sig=dummy-sig&token=dummy-token`;
+            const backupRelative = './fixture/backup-quality.m3u8?sig=dummy';
+            const backupUrl = 'https://usher.ttvnw.net/api/channel/hls/fixture/backup-quality.m3u8?sig=dummy';
+            fixture(backup, backupMaster, masterPlaylist(backupRelative));
+            fixture(backup, backupUrl, '#EXTM3U\n#EXTINF:1,live\n./segment.ts\n');
+            fixture(backup, mediaUrl, adMedia);
+            const switched = await outcome(backup.run(`fetch(${json(mediaUrl)})`));
+            assert.equal(switched.state, 'fulfilled', 'backup stream still serves media');
+            assert.equal(switched.value.url, mediaUrl);
+            assert.match(await switched.value.text(), /https:\/\/usher\.ttvnw\.net\/api\/channel\/hls\/fixture\/segment\.ts/);
         },
     },
     {
