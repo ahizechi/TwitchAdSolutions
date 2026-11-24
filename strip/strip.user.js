@@ -198,7 +198,7 @@
                         };
                         const send = function() {
                             return realFetch(url, options).then(function(response) {
-                                processAfter(response);
+                                return processAfter(response);
                             })['catch'](function(err) {
                                 reject(err);
                             });
@@ -217,7 +217,7 @@
                         };
                         const send = function() {
                             return realFetch(url, options).then(function(response) {
-                                processAfter(response);
+                                return processAfter(response);
                             })['catch'](function(err) {
                                 reject(err);
                             });
@@ -250,7 +250,7 @@
                         };
                         const send = function() {
                             return realFetch(url, options).then(function(response) {
-                                processAfter(response);
+                                return processAfter(response);
                             })['catch'](function(err) {
                                 reject(err);
                             });
@@ -265,10 +265,10 @@
     function getServerTimeFromM3u8(encodingsM3u8) {
         if (V2API) {
             const matches = encodingsM3u8.match(/#EXT-X-SESSION-DATA:DATA-ID="SERVER-TIME",VALUE="([^"]+)"/);
-            return matches.length > 1 ? matches[1] : null;
+            return matches?.[1] ?? null;
         }
         const matches = encodingsM3u8.match('SERVER-TIME="([0-9.]+)"');
-        return matches.length > 1 ? matches[1] : null;
+        return matches?.[1] ?? null;
     }
     function replaceServerTimeInM3u8(encodingsM3u8, newServerTime) {
         if (V2API) {
