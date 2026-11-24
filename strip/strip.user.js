@@ -35,6 +35,7 @@
     }
     let localStorageHookFailed = false;
     let adBlockDiv = null;
+    const disposeWorkerUrls = new WeakMap();
     const workerStringConflicts = [
         'twitch',
         'isVariantA'// TwitchNoSub
@@ -125,9 +126,20 @@
                 const workerUrl = URL.createObjectURL(new Blob([newBlobStr]));
                 try {
                     super(workerUrl, options);
-                } finally {
+                } catch (error) {
                     URL.revokeObjectURL(workerUrl);
+                    throw error;
                 }
+                // A native or wrapped worker may still be starting when its constructor returns.
+                const releaseWorkerUrl = () => {
+                    disposeWorkerUrls.delete(this);
+                    this.removeEventListener('message', releaseWorkerUrl);
+                    this.removeEventListener('error', releaseWorkerUrl);
+                    URL.revokeObjectURL(workerUrl);
+                };
+                disposeWorkerUrls.set(this, releaseWorkerUrl);
+                this.addEventListener('message', releaseWorkerUrl);
+                this.addEventListener('error', releaseWorkerUrl);
                 this.addEventListener('message', (e) => {
                     if (e.data.key == 'ReloadPlayer') {
                         reloadTwitchPlayer();
@@ -162,6 +174,11 @@
                     }
                     return adBlockDiv;
                 }
+            }
+
+            terminate() {
+                disposeWorkerUrls.get(this)?.();
+                return super.terminate();
             }
         };
         let workerInstance = reinsertWorkers(newWorker, reinsert);

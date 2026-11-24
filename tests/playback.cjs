@@ -259,6 +259,8 @@ const cases = [
         async run(source, path) {
             if (path.startsWith('strip/')) {
                 const { page, worker } = await playback(source, path);
+                assert.equal(page.run('objectUrls.size'), 1);
+                page.run("capturedWorkers[0].emit('message', {key: 'fixture-ready'})");
                 assert.equal(page.run('objectUrls.size'), 0);
                 worker.run(`AdSegmentCache.set('https://cdn.invalid/expired.ts', Date.now() - 120001);`);
                 const media = await outcome(worker.run(`fetch(${json(mediaUrl)})`));
@@ -272,10 +274,12 @@ const cases = [
                 const active = new Worker('blob:https://www.twitch.tv/current');
                 older.terminate();
                 simulateAds(1);
+                const waiting = objectUrls.size;
+                active.emit('message', {key: 'fixture-ready'});
                 return { stale: older.messages.length, active: active.messages.length,
-                    retained: objectUrls.size, retired: older.terminated, revoked: revoked.length };
+                    waiting, retained: objectUrls.size, retired: older.terminated, revoked: revoked.length };
             })()`);
-            assert.deepEqual(result, { stale: 0, active: 1, retained: 0, retired: true, revoked: 2 });
+            assert.deepEqual(result, { stale: 0, active: 1, waiting: 1, retained: 0, retired: true, revoked: 2 });
 
             const worker = (await playback(source, path)).worker;
             for (let i = 0; i < 18; i++) {
