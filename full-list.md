@@ -41,7 +41,7 @@
   - Attempts to get a clean stream (low resolution).
   - If it fails to get a clean stream it removes ad segments (no playback until ad-free stream is found).
   - Not recommended, `vaft` is a better script.
-- `strip` - [userscript](https://github.com/pixeltris/TwitchAdSolutions/raw/master/strip/strip.js)
+- `strip` (legacy, unmaintained) - [userscript](https://github.com/pixeltris/TwitchAdSolutions/raw/master/strip/strip.user.js)
   - Strips ad segments (no playback until ad-free stream is found).
   - Not recommended, `vaft` is a better script.
 
