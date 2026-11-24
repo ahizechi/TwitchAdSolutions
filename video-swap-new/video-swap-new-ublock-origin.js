@@ -378,6 +378,9 @@ twitch-videoad.js text/javascript
             return textStr;
         }
         const haveAdTags = textStr.includes(AD_SIGNIFIER) || (SimulatedAdsDepth > 0 && (!streamInfo.BackupEncodings || !streamInfo.BackupEncodings.includes(url) || SimulatedAdsDepth - 1 > streamInfo.BackupEncodingsPlayerTypeIndex));
+        if (!haveAdTags && !streamInfo.BackupEncodings) {
+            streamInfo.BackupEncodingsStatus.clear();
+        }
         if (streamInfo.BackupEncodings && streamInfo.FirstVariantUrl) {
             const streamM3u8Url = streamInfo.FirstVariantUrl;
             const streamM3u8Response = streamM3u8Url ? await realFetch(streamM3u8Url) : null;
