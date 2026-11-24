@@ -27,6 +27,8 @@ Alternatively:
 
 ## Scripts
 
+The inherited `embed-test` branch is experimental and unsupported. Its userscript uses additional manager permissions and is outside the install options below.
+
 **There are better / easier to use methods in the above recommendations.**
 
 - vaft - [userscript](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft.user.js) / [ublock](https://raw.githubusercontent.com/ahizechi/TwitchAdSolutions/master/vaft/vaft-ublock-origin.js)
